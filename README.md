@@ -1,0 +1,82 @@
+# Coreset Selection — Usage Guide
+
+Three pieces, used in order: `label_hardness()` → `WeightedGreedyCoreset` (uses `get_samples()` internally) →  indices.
+
+## 1. Get embeddings
+
+Extract embeddings for your dataset (e.g. DINO/MAIRA-2) **in the same row order** as
+`X_train` / `Y_train`. This order matters because of of the mapping back of indices later, see the warning at the bottom.
+
+```python
+embeddings = ...   # shape [N, D], row i = sample i
+labels     = Y_train  # shape [N] (single-label) or [N, C] (multi-label, binary)
+```
+
+## 2. Compute hardness scores
+
+```python
+hardness = label_hardness(embeddings, labels, k=15)
+```
+
+- Returns an array of shape `[N]`, values in `[0, 1]` — 1 = hardest.
+- You only need this to feed into the selector next; you don't use it directly otherwise.
+
+## 3. Create the selector
+
+```python
+selector = WeightedGreedyCoreset(
+    embeddings,      # corpus
+    labels,
+    'euclidean',     # or 'cosine'
+    100,             # n_neighbors — currently unused by the fast path, kept for API compat
+    hardness
+)
+```
+
+## 4. Run selection
+
+```python
+result = selector.select(
+    corset_size=N,          # size of the coreset you want
+    sample_size=100,        # candidate pool size per greedy step
+    weights=(0.6, 0.2, 0.2),# (coverage, hardness, rarity) — must sum to something sensible, not necessarily 1
+    seed=0
+)
+```
+
+`weights` order is **(coverage, hardness, rarity)** — `w_cov, w_hard, w_rare = weights`.For chestmnist224 the weights are indicated in the notebook tuto.
+
+While it runs you'll see progress prints like `Selected 100/2000` .
+
+`result` is a dict:
+
+```python
+result = {
+    "indices":  [...],   # the selected row indices — this is what you actually need
+    "labels":   [...],   # labels of selected samples
+    "rarity":   [...],   # rarity score of selected samples
+    "hardness": [...],   # hardness score of selected samples
+}
+```
+
+## 5. Pull out your coreset
+
+```python
+coreset_idx = result["indices"]
+
+X_tr = X_train[coreset_idx]
+Y_tr = Y_train[coreset_idx]
+```
+
+###  Order / shuffling — read this before you plug indices into anything
+
+`coreset_idx` are indices **into the exact array you passed as `corpus` in step 3** (i.e. row `i` of `embeddings` = row `i` of whatever labels/images you indexed with). They are only valid if:
+
+- `embeddings`, `labels`, `X_train`, and `Y_train` are all aligned row-for-row, in the same unshuffled order, at the time you built the selector.
+- If you extracted embeddings via a `DataLoader` with `shuffle=True`, or you re-shuffled `X_train`/`Y_train` (e.g. re-split, re-loaded, or re-sorted) *after* computing embeddings, `coreset_idx` will point at the wrong samples. Either extract embeddings with `shuffle=False`, or keep and apply the exact index mapping the loader used.
+- If in doubt, sanity-check with `class_coverage(coreset_idx, Y_train, CLASS_NAMES)` and confirm the counts look plausible (rare classes over-represented vs. random) before training on it.
+
+## Other pieces referenced above
+
+- `get_samples(corpus, C_set, size_samples, seed)` — internal helper, samples a random candidate pool excluding what's already selected. You don't call this yourself.
+- `random_coreset(labels, selection_rate=None, coreset_size=None, seed=42)` — plain random baseline, for comparison. Returns indices only, no scores.
