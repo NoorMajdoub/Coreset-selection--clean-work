@@ -6,7 +6,7 @@ Three pieces, used in order: `label_hardness()` → `WeightedGreedyCoreset` (use
 
 Extract embeddings for your dataset (e.g. DINO/MAIRA-2) **in the same row order** as
 `X_train` / `Y_train`. This order matters because of of the mapping back of indices later, see the warning at the bottom.
-
+For chestmnist , use DenseNet embeddings uploaded below (for better results , or if you can find more representative embeddings that would be great :3 but this algo depends on using good accurate embeddings!)
 ```python
 embeddings = ...   # shape [N, D], row i = sample i
 labels     = Y_train  # shape [N] (single-label) or [N, C] (multi-label, binary)
@@ -44,7 +44,7 @@ result = selector.select(
 )
 ```
 
-`weights` order is **(coverage, hardness, rarity)** — `w_cov, w_hard, w_rare = weights`.For chestmnist224 the weights are indicated in the notebook tuto.
+`weights` order is **(coverage, hardness, rarity)** — `w_cov, w_hard, w_rare = weights`.For chestmnist224 the weights are weights=(0.6,0.5,0.7).
 
 While it runs you'll see progress prints like `Selected 100/2000` .
 
